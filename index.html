@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MATA Holographic Grid: Find the Object</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- MediaPipe Hands & Camera Utils for Real-Time Browser Hand Tracking -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy-dark: #040d1a;
+    --navy-panel: #06182c;
+    --electric-blue: #0284c7;
+    --cyan-glow: #00f0ff;
+    --gold-accent: #ffc107;
+    --danger-red: #ff3b5c;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--navy-dark);
+    color: #ffffff;
+    font-family: 'Rajdhani', sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-orbitron {
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  /* Futuristic M.A.T.A. Chamfered Borders & Glows */
+  .hud-panel {
+    background: rgba(5, 20, 38, 0.9);
+    border: 2px solid var(--cyan-glow);
+    box-shadow: 0 0 22px rgba(0, 240, 255, 0.25), inset 0 0 18px rgba(0, 240, 255, 0.12);
+    backdrop-filter: blur(8px);
+  }
+
+  .hud-chamfer {
+    clip-path: polygon(
+      18px 0%, calc(100% - 18px) 0%,
+      100% 18px, 100% calc(100% - 18px),
+      calc(100% - 18px) 100%, 18px 100%,
+      0% calc(100% - 18px), 0% 18px
+    );
+  }
+
+  .cyber-grid-bg {
+    background-color: #040d1a;
+    background-image:
+      radial-gradient(circle at 50% 35%, rgba(2, 132, 199, 0.28) 0%, rgba(4, 13, 26, 0.96) 75%),
+      linear-gradient(rgba(0, 240, 255, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.08) 1px, transparent 1px);
+    background-size: 100% 100%, 28px 28px, 28px 28px;
+  }
+
+  /* Simulated HQ Floor Grid Perspective when camera is off/denied */
+  .simulated-hq-backdrop {
+    background:
+      radial-gradient(ellipse at 50% 30%, #0b355e 0%, #051629 55%, #020811 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .simulated-hq-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 2px, transparent 2px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 2px, transparent 2px);
+    background-size: 60px 60px;
+    transform: perspective(500px) rotateX(60deg);
+    animation: gridScroll 18s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes gridScroll {
+    0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
+    100% { transform: perspective(500px) rotateX(60deg) translateY(60px); }
+  }
+
+  /* 3D Holographic AR Stage */
+  .ar-stage {
+    perspective: 1050px;
+    touch-action: none;
+  }
+
+  .holo-board-3d {
+    transform-style: preserve-3d;
+    transition: transform 0.15s ease-out;
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.75),
+      0 0 30px rgba(0, 240, 255, 0.4),
+      inset 0 0 24px rgba(0, 240, 255, 0.25);
+    background: rgba(4, 22, 42, 0.72);
+    backdrop-filter: blur(4px);
+    border: 2.5px solid #00f0ff;
+    border-radius: 16px;
+  }
+
+  /* Grid Cell Styling */
+  .grid-cell {
+    position: relative;
+    border: 1.5px solid rgba(0, 240, 255, 0.45);
+    background: rgba(0, 240, 255, 0.05);
+    transition: all 0.22s ease;
+    transform-style: preserve-3d;
+    cursor: pointer;
+  }
+  .grid-cell:hover, .grid-cell:active, .grid-cell.hand-hover {
+    background: rgba(0, 240, 255, 0.28);
+    border-color: #ffffff;
+    box-shadow: inset 0 0 16px rgba(0, 240, 255, 0.55), 0 0 14px rgba(0, 240, 255, 0.45);
+  }
+
+  .grid-cell.selected {
+    background: rgba(255, 193, 7, 0.28);
+    border: 2.5px solid #ffc107;
+    box-shadow: inset 0 0 18px rgba(255, 193, 7, 0.65), 0 0 18px rgba(255, 193, 7, 0.5);
+  }
+
+  .grid-cell.path-highlight {
+    background: rgba(0, 240, 255, 0.26);
+    border: 2px dashed #00f0ff;
+    animation: pulseCell 1.2s infinite alternate;
+  }
+
+  .grid-cell.wrong-shake {
+    animation: shakeCell 0.4s ease;
+    background: rgba(255, 59, 92, 0.35);
+    border-color: #ff3b5c;
+  }
+
+  @keyframes pulseCell {
+    from { box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.3); }
+    to { box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.85); }
+  }
+
+  @keyframes shakeCell {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  /* 3D Pop-up Anchored Object on the Grid */
+  .anchored-3d-object {
+    transform: translateZ(26px) rotateX(-16deg);
+    transform-style: preserve-3d;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 8px 6px rgba(0, 0, 0, 0.75));
+    pointer-events: none;
+  }
+
+  .grid-cell:hover .anchored-3d-object,
+  .grid-cell.hand-hover .anchored-3d-object,
+  .grid-cell.selected .anchored-3d-object {
+    transform: translateZ(38px) rotateX(-12deg) scale(1.12);
+  }
+
+  /* Mirror front camera naturally so hand movements match pupil's left/right */
+  .mirror-feed {
+    transform: scaleX(-1);
+  }
+
+  /* Glowing I.R.I.S. Fingertip Reticle */
+  .iris-hand-reticle {
+    position: fixed;
+    width: 68px;
+    height: 68px;
+    margin-left: -34px;
+    margin-top: -34px;
+    pointer-events: none;
+    z-index: 60;
+    transition: transform 0.05s linear;
+  }
+
+  /* Holographic Floating Ring beneath each 3D object */
+  .holo-anchor-base {
+    position: absolute;
+    bottom: 6px;
+    width: 72%;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #00f0ff;
+    background: radial-gradient(circle, rgba(0, 240, 255, 0.45) 0%, transparent 75%);
+    box-shadow: 0 0 10px #00f0ff;
+    pointer-events: none;
+  }
+
+  .holo-anchor-base.hq-base {
+    border-color: #ffc107;
+    background: radial-gradient(circle, rgba(255, 193, 7, 0.55) 0%, transparent 75%);
+    box-shadow: 0 0 14px #ffc107;
+  }
+
+  /* IRIS AI Hologram Eye Pulse */
+  @keyframes irisFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+  }
+
+  .iris-eye-anim {
+    animation: irisFloat 2.8s ease-in-out infinite;
+  }
+
+  /* Scanning Laser Sweep over AR camera */
+  .ar-scan-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00f0ff, transparent);
+    box-shadow: 0 0 12px #00f0ff;
+    opacity: 0.45;
+    animation: scanSweep 5s linear infinite;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  @keyframes scanSweep {
+    0% { top: 5%; }
+    50% { top: 95%; }
+    100% { top: 5%; }
+  }
+
+  /* Custom Button Press */
+  .btn-mata {
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .btn-mata:active {
+    transform: scale(0.96);
+  }
+</style>
+</head>
+<body class="cyber-grid-bg text-white flex flex-col min-h-screen">
+
+  <!-- =========================================================
+       SCREEN 1: WELCOME SCREEN
+       ========================================================= -->
+  <section id="welcome-screen" class="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 relative">
+    
+    <!-- Top MATA Command Bar -->
+    <div class="w-full max-w-4xl flex items-center justify-between mb-4 px-3 py-2 rounded-xl border border-cyan-400/40 bg-[#051628]/90">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+        <span class="font-orbitron text-xs sm:text-sm tracking-widest text-cyan-300 font-bold">M.A.T.A. ACADEMY // YEAR 3 MATH</span>
+      </div>
+      <span class="font-orbitron text-xs px-2.5 py-1 rounded bg-amber-400/20 border border-amber-400 text-amber-300 font-bold">TOPIC 8: COORDINATES</span>
+    </div>
+
+    <!-- Main Welcome Hero Card -->
+    <div class="w-full max-w-4xl hud-panel hud-chamfer p-5 sm:p-8 relative overflow-hidden">
+      
+      <!-- Header Badges & IRIS Hologram -->
+      <div class="flex flex-col items-center text-center">
+        <!-- IRIS Eye Emblem -->
+        <div class="iris-eye-anim w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-cyan-400 bg-cyan-950/60 flex items-center justify-center shadow-[0_0_25px_rgba(0,240,255,0.5)] mb-3">
+          <svg width="58" height="58" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="28" stroke="#00f0ff" stroke-width="2" stroke-dasharray="6 4"/>
+            <path d="M8 32C14 20 22 15 32 15C42 15 50 20 56 32C50 44 42 49 32 49C22 49 14 44 8 32Z" stroke="#00f0ff" stroke-width="2.5" fill="rgba(0,240,255,0.12)"/>
+            <circle cx="32" cy="32" r="9" stroke="#ffc107" stroke-width="2.5" fill="#041527"/>
+            <circle cx="32" cy="32" r="4" fill="#00f0ff"/>
+          </svg>
+        </div>
+
+        <div class="inline-block px-3 py-1 rounded-full bg-cyan-400 text-slate-950 font-orbitron font-extrabold text-xs tracking-wider mb-2">
+          I.R.I.S. AUGMENTED REALITY SYSTEM
+        </div>
+
+        <h1 class="font-orbitron text-2xl sm:text-4xl md:text-5xl font-black tracking-wider text-white drop-shadow-[0_0_15px_rgba(0,240,255,0.7)] leading-tight">
+          MATA HOLOGRAPHIC GRID:<br>
+          <span class="text-amber-400">FIND THE OBJECT</span>
+        </h1>
+
+        <p class="mt-3 text-base sm:text-xl text-cyan-100 max-w-2xl font-semibold leading-relaxed">
+          Welcome, Junior Agent! Wave your <span class="text-amber-300 font-bold">HAND</span> in front of the camera (Point &amp; Hold or Pinch) or tap the <span class="text-cyan-300 font-bold">4×4 Holographic Grid</span> to locate hidden objects from <span class="text-amber-300 font-bold">MATA HQ</span>!
+        </p>
+      </div>
+
+      <!-- Chibi Agents & IRIS Briefing Box -->
+      <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-[#030e1c]/85 border border-cyan-500/35 rounded-2xl p-4">
+        
+        <!-- Chibi Agent Ali -->
+        <div class="flex items-center gap-3 bg-slate-900/80 p-3 rounded-xl border border-rose-500/50">
+          <svg width="58" height="58" viewBox="0 0 100 100" class="shrink-0">
+            <circle cx="50" cy="50" r="46" fill="#0b1f38" stroke="#ff3b5c" stroke-width="4"/>
+            <path d="M26 92 C26 72, 74 72, 74 92 Z" fill="#e62e3d"/>
+            <path d="M38 92 L43 75 L57 75 L62 92 Z" fill="#1d4ed8"/>
+            <ellipse cx="50" cy="49" rx="20" ry="19" fill="#f6c7a8"/>
+            <path d="M28 45 C26 20, 74 18, 72 45 C66 32, 54 26, 44 32 C35 36, 31 38, 28 45 Z" fill="#111827"/>
+            <!-- IRIS Visor -->
+            <rect x="30" y="42" width="40" height="13" rx="6" fill="rgba(0,240,255,0.35)" stroke="#00f0ff" stroke-width="2.5"/>
+            <circle cx="40" cy="49" r="3.5" fill="#111827"/>
+            <circle cx="60" cy="49" r="3.5" fill="#111827"/>
+            <path d="M44 59 Q50 64 56 59" stroke="#9a3412" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+          </svg>
+          <div>
+            <div class="font-orbitron text-xs text-rose-400 font-bold">AGENT ALI</div>
+            <div class="text-sm text-slate-200 leading-snug">"Point your index finger at the grid or pinch to lock on!"</div>
+          </div>
+        </div>
+
+        <!-- IRIS Central Guide -->
+        <div class="flex items-center gap-3 bg-cyan-950/50 p-3 rounded-xl border border-cyan-400/60">
+          <div class="w-12 h-12 rounded-full bg-cyan-400/20 border-2 border-cyan-400 flex items-center justify-center shrink-0 font-orbitron font-black text-cyan-300 text-xs">
+            IRIS
+          </div>
+          <div>
+            <div class="font-orbitron text-xs text-cyan-300 font-bold">AI ASSISTANT</div>
+            <div class="text-sm text-cyan-50 leading-snug">"Start at <strong class="text-amber-300">MATA HQ (A1)</strong>. Read columns <strong class="text-cyan-300">A–D</strong> then rows <strong class="text-cyan-300">1–4</strong>!"</div>
+          </div>
+        </div>
+
+        <!-- Chibi Agent Alisya -->
+        <div class="flex items-center gap-3 bg-slate-900/80 p-3 rounded-xl border border-amber-400/50">
+          <svg width="58" height="58" viewBox="0 0 100 100" class="shrink-0">
+            <circle cx="50" cy="50" r="46" fill="#0b1f38" stroke="#ffc107" stroke-width="4"/>
+            <path d="M26 92 C26 72, 74 72, 74 92 Z" fill="#f59e0b"/>
+            <path d="M38 92 L43 75 L57 75 L62 92 Z" fill="#1e293b"/>
+            <ellipse cx="50" cy="50" rx="20" ry="19" fill="#f3c1a0"/>
+            <path d="M28 48 C26 22, 74 22, 72 48 C68 38, 60 35, 50 35 C40 35, 32 38, 28 48 Z" fill="#0f172a"/>
+            <path d="M31 36 Q50 26 69 36" stroke="#ffc107" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+            <circle cx="40" cy="50" r="3.8" fill="#1e1b18"/>
+            <circle cx="60" cy="50" r="3.8" fill="#1e1b18"/>
+            <path d="M44 59 Q50 63 56 59" stroke="#9a3412" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+          </svg>
+          <div>
+            <div class="font-orbitron text-xs text-amber-400 font-bold">AGENT ALISYA</div>
+            <div class="text-sm text-slate-200 leading-snug">"Hold steady for 1.2s or tap any square to inspect!"</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-7 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <button id="btn-start-ar" class="btn-mata w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 font-orbitron font-black text-lg sm:text-xl tracking-wider shadow-[0_0_25px_rgba(0,240,255,0.65)] hover:brightness-110 flex items-center justify-center gap-3">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+            <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+            <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+          </svg>
+          START HAND AR MISSION
+        </button>
+
+        <button id="btn-start-sim" class="btn-mata w-full sm:w-auto px-6 py-4 rounded-xl bg-slate-900/90 border-2 border-amber-400 text-amber-300 font-orbitron font-bold text-base sm:text-lg tracking-wider hover:bg-amber-400/15 flex items-center justify-center gap-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+            <line x1="12" y1="22" x2="12" y2="15.5"/>
+            <polyline points="22 8.5 12 15.5 2 8.5"/>
+          </svg>
+          SIMULATED HQ MODE
+        </button>
+      </div>
+
+      <!-- Privacy Notice -->
+      <div class="mt-5 flex items-center justify-center gap-2 text-xs sm:text-sm text-cyan-200/80 text-center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2.2" class="shrink-0">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span><strong>Privacy Safe:</strong> Camera video runs 100% locally on your device. No images or videos are ever recorded, saved, or uploaded.</span>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- =========================================================
+       SCREEN 2: AR CAMERA & HOLOGRAPHIC GRID GAME SCREEN
+       ========================================================= -->
+  <section id="game-screen" class="hidden fixed inset-0 z-50 flex flex-col bg-slate-950 overflow-hidden">
+    
+    <!-- Live Camera Video Feed -->
+    <video id="camera-feed" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover z-0 hidden mirror-feed"></video>
+
+    <!-- Holographic Hand Skeleton Overlay Canvas -->
+    <canvas id="hand-skeleton-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
+
+    <!-- Floating I.R.I.S. Fingertip Reticle with 1.2s Dwell Progress Ring -->
+    <div id="iris-hand-reticle" class="iris-hand-reticle hidden">
+      <svg width="68" height="68" viewBox="0 0 68 68">
+        <!-- Outer Rotating Scanner Dashed Ring -->
+        <circle cx="34" cy="34" r="29" fill="none" stroke="#00f0ff" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.8"/>
+        <!-- Dwell Lock-On Progress Ring -->
+        <circle id="dwell-progress-circle" cx="34" cy="34" r="23" fill="rgba(0,240,255,0.12)" stroke="#ffc107" stroke-width="4.5"
+          stroke-dasharray="144.5" stroke-dashoffset="144.5" stroke-linecap="round" transform="rotate(-90 34 34)"/>
+        <!-- Crosshairs -->
+        <line x1="34" y1="4" x2="34" y2="14" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="34" y1="54" x2="34" y2="64" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="4" y1="34" x2="14" y2="34" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="54" y1="34" x2="64" y2="34" stroke="#00f0ff" stroke-width="2"/>
+        <!-- Center Core Dot -->
+        <circle id="reticle-core-dot" cx="34" cy="34" r="5" fill="#ffc107" stroke="#ffffff" stroke-width="1.5"/>
+      </svg>
+      <div id="reticle-coord-tag" class="mt-[-4px] text-center font-orbitron text-[10px] font-black text-amber-300 bg-slate-950/90 border border-cyan-400/70 rounded px-1">
+        SCAN
+      </div>
+    </div>
+
+    <!-- Fallback Simulated MATA HQ Floor Backdrop -->
+    <div id="simulated-backdrop" class="absolute inset-0 simulated-hq-backdrop z-0"></div>
+
+    <!-- AR Laser Scanline Effect -->
+    <div class="ar-scan-line"></div>
+
+    <!-- TOP HUD BAR -->
+    <header class="relative z-20 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3.5 bg-gradient-to-b from-[#040d1a]/95 via-[#040d1a]/80 to-transparent">
+      
+      <!-- Left: Exit Camera & Status -->
+      <div class="flex items-center gap-2">
+        <button id="btn-exit-camera" class="btn-mata px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 border border-rose-300 text-white font-orbitron font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-[0_0_15px_rgba(255,59,92,0.5)]">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          EXIT CAMERA
+        </button>
+
+        <span id="camera-status-badge" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/85 border border-cyan-400/50 font-orbitron text-xs text-cyan-300 font-bold">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="camera-status-text">AR LIVE</span>
+        </span>
+
+        <!-- Hand Sensor Status & Toggle Badge -->
+        <button id="btn-toggle-hand" title="Toggle Hand Tracking Sensor" class="btn-mata inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-cyan-950/90 border border-amber-400/80 font-orbitron text-[11px] sm:text-xs text-amber-300 font-bold shadow-[0_0_12px_rgba(255,193,7,0.3)]">
+          <span id="hand-sensor-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+          <span id="hand-sensor-text">HAND SENSOR: INITIALIZING</span>
+        </button>
+      </div>
+
+      <!-- Center: Mode Switcher (Explore vs Mission Mode) -->
+      <div class="flex items-center bg-[#06182c]/95 p-1 rounded-xl border border-cyan-400/60 shadow-lg">
+        <button id="tab-mission-mode" class="btn-mata px-3 sm:px-4 py-1.5 rounded-lg font-orbitron font-extrabold text-xs sm:text-sm bg-amber-400 text-slate-950 transition">
+          MISSION MODE
+        </button>
+        <button id="tab-explore-mode" class="btn-mata px-3 sm:px-4 py-1.5 rounded-lg font-orbitron font-extrabold text-xs sm:text-sm text-cyan-200 hover:text-white transition">
+          EXPLORE GRID
+        </button>
+      </div>
+
+      <!-- Right: Switch Camera & Sound Toggle -->
+      <div class="flex items-center gap-2">
+        <button id="btn-switch-camera" title="Switch Front / Rear Camera" class="btn-mata px-3 py-2 rounded-xl bg-sky-900/90 hover:bg-sky-800 border border-cyan-400 text-cyan-200 font-orbitron font-bold text-xs sm:text-sm flex items-center gap-1.5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4"/>
+            <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>
+          </svg>
+          <span class="hidden md:inline">SWITCH CAM</span>
+        </button>
+
+        <button id="btn-toggle-sound" title="Toggle Sound" class="btn-mata p-2 rounded-xl bg-slate-900/90 border border-cyan-400/60 text-cyan-300">
+          <svg id="icon-sound-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <svg id="icon-sound-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff3b5c" stroke-width="2.2" class="hidden">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <line x1="23" y1="9" x2="17" y2="15"/>
+            <line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Camera Fallback Alert Banner (shown only if camera denied/unavailable) -->
+    <div id="camera-fallback-banner" class="hidden relative z-20 mx-3 mb-1 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-400 text-amber-200 text-xs sm:text-sm flex items-center justify-between gap-2">
+      <span id="camera-fallback-msg">Camera unavailable or permission denied. Running Simulated MATA HQ Arena so you can still play!</span>
+      <button id="btn-retry-camera" class="px-2.5 py-1 rounded bg-amber-400 text-slate-950 font-orbitron font-bold text-xs shrink-0">RETRY CAM</button>
+    </div>
+
+    <!-- IRIS AI ASSISTANT GUIDANCE BANNER -->
+    <div class="relative z-20 mx-auto w-full max-w-3xl px-3 pt-1">
+      <div class="hud-panel rounded-2xl p-2.5 sm:p-3.5 flex items-center gap-3 border-cyan-400">
+        <!-- IRIS Hologram Avatar -->
+        <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-cyan-950 border-2 border-cyan-400 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(0,240,255,0.5)]">
+          <svg width="36" height="36" viewBox="0 0 64 64" fill="none">
+            <path d="M8 32C14 20 22 15 32 15C42 15 50 20 56 32C50 44 42 49 32 49C22 49 14 44 8 32Z" stroke="#00f0ff" stroke-width="3"/>
+            <circle cx="32" cy="32" r="8" stroke="#ffc107" stroke-width="3"/>
+            <circle cx="32" cy="32" r="3.5" fill="#00f0ff"/>
+          </svg>
+        </div>
+
+        <!-- IRIS Message & Mission Progress -->
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2 mb-0.5">
+            <span id="iris-header-label" class="font-orbitron text-xs font-extrabold tracking-wider text-amber-400">
+              IRIS MISSION 1 OF 5
+            </span>
+            <div id="mission-stars" class="flex items-center gap-1 text-amber-400 text-sm">
+              <!-- Stars injected via JS -->
+            </div>
+          </div>
+          <p id="iris-dialogue" class="text-sm sm:text-base font-bold text-white leading-snug">
+            Loading tactical holographic grid...
+          </p>
+        </div>
+
+        <!-- Demo / Hint Button in Mission Mode (Also selectable with Hand Cursor!) -->
+        <button id="btn-iris-demo" data-hand-target="true" class="btn-mata shrink-0 px-3 py-2 rounded-xl bg-cyan-400/20 hover:bg-cyan-400/35 border border-cyan-400 text-cyan-200 font-orbitron font-bold text-xs flex flex-col items-center">
+          <span>SHOW</span>
+          <span class="text-amber-300">GUIDE</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- CENTER AR HOLOGRAPHIC 4x4 GRID STAGE -->
+    <main class="relative z-10 flex-1 flex flex-col items-center justify-center px-2 py-1 ar-stage overflow-hidden">
+      
+      <!-- Visual Direction Compass Indicators Around the Grid -->
+      <div class="w-full max-w-md flex flex-col items-center">
+        
+        <!-- UP Direction Indicator -->
+        <div class="mb-1.5 px-3 py-0.5 rounded-full bg-cyan-950/85 border border-cyan-400/60 flex items-center gap-1.5 text-cyan-300 font-orbitron text-xs font-extrabold tracking-widest shadow">
+          <span>▲ UP (ROWS 1 → 4)</span>
+        </div>
+
+        <div class="flex items-center justify-center w-full gap-1.5 sm:gap-2.5">
+          
+          <!-- LEFT Direction Indicator -->
+          <div class="px-1.5 py-2 rounded-xl bg-cyan-950/85 border border-cyan-400/60 flex flex-col items-center text-cyan-300 font-orbitron text-[10px] sm:text-xs font-extrabold">
+            <span>◀</span>
+            <span class="mt-1">L</span>
+            <span>E</span>
+            <span>F</span>
+            <span>T</span>
+          </div>
+
+          <!-- 3D HOLOGRAPHIC COORDINATE GRID CONTAINER -->
+          <div id="holo-board" class="holo-board-3d p-2.5 sm:p-3.5 w-[290px] sm:w-[360px] md:w-[400px]" style="transform: rotateX(18deg) rotateY(0deg);">
+            
+            <!-- Grid + Row Numbers (4 down to 1) -->
+            <div class="flex">
+              <!-- Vertical Row Labels: 4, 3, 2, 1 (Top to Bottom so 1 is at Bottom-Left) -->
+              <div class="flex flex-col justify-around pr-2 font-orbitron font-black text-amber-400 text-base sm:text-lg">
+                <div class="h-14 sm:h-16 md:h-20 flex items-center justify-center">4</div>
+                <div class="h-14 sm:h-16 md:h-20 flex items-center justify-center">3</div>
+                <div class="h-14 sm:h-16 md:h-20 flex items-center justify-center">2</div>
+                <div class="h-14 sm:h-16 md:h-20 flex items-center justify-center">1</div>
+              </div>
+
+              <!-- 4x4 Interactive Grid Cells -->
+              <div id="coordinate-grid" class="grid grid-cols-4 gap-1.5 flex-1">
+                <!-- 16 cells generated dynamically by JS -->
+              </div>
+            </div>
+
+            <!-- Bottom Horizontal Column Labels: A, B, C, D -->
+            <div class="flex pl-6 sm:pl-7 pt-2 font-orbitron font-black text-cyan-300 text-base sm:text-lg">
+              <div class="flex-1 text-center">A</div>
+              <div class="flex-1 text-center">B</div>
+              <div class="flex-1 text-center">C</div>
+              <div class="flex-1 text-center">D</div>
+            </div>
+
+          </div>
+
+          <!-- RIGHT Direction Indicator -->
+          <div class="px-1.5 py-2 rounded-xl bg-cyan-950/85 border border-cyan-400/60 flex flex-col items-center text-cyan-300 font-orbitron text-[10px] sm:text-xs font-extrabold">
+            <span>▶</span>
+            <span class="mt-1">R</span>
+            <span>I</span>
+            <span>G</span>
+            <span>H</span>
+            <span>T</span>
+          </div>
+
+        </div>
+
+        <!-- DOWN Direction & Tilt Tip -->
+        <div class="mt-2 flex items-center gap-3">
+          <span class="px-3 py-0.5 rounded-full bg-cyan-950/85 border border-cyan-400/60 text-cyan-300 font-orbitron text-xs font-extrabold tracking-widest">
+            ▼ DOWN (COLUMNS A → D)
+          </span>
+          <span class="text-[11px] text-cyan-200/75 hidden sm:inline">Drag grid to tilt 3D view</span>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- BOTTOM OBJECT INTEL & FEEDBACK CARD -->
+    <footer class="relative z-20 p-2.5 sm:p-4 bg-gradient-to-t from-[#040d1a] via-[#040d1a]/95 to-transparent">
+      <div class="max-w-3xl mx-auto hud-panel rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        
+        <!-- Selected Cell Badge + Object Details -->
+        <div class="flex items-center gap-3 w-full sm:w-auto">
+          <div id="selected-coord-badge" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-400 text-slate-950 font-orbitron font-black text-2xl sm:text-3xl flex items-center justify-center shrink-0 shadow-[0_0_18px_rgba(255,193,7,0.65)]">
+            A1
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span id="intel-object-name" class="font-orbitron font-extrabold text-base sm:text-lg text-cyan-300 truncate">
+                MATA HQ (Reference Point)
+              </span>
+            </div>
+            <p id="intel-path-desc" class="text-xs sm:text-sm text-slate-200 font-semibold leading-snug mt-0.5">
+              Starting Reference Point at Column A, Row 1. Tap any grid square to explore!
+            </p>
+          </div>
+        </div>
+
+        <!-- Next Mission / Action Button (Also selectable with Hand Cursor!) -->
+        <div id="mission-action-wrap" class="w-full sm:w-auto flex justify-end shrink-0">
+          <button id="btn-next-mission" data-hand-target="true" class="hidden btn-mata w-full sm:w-auto px-5 py-3 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-orbitron font-black text-sm tracking-wider shadow-[0_0_18px_rgba(52,211,153,0.7)]">
+            NEXT MISSION ▶
+          </button>
+        </div>
+
+      </div>
+    </footer>
+
+  </section>
+
+  <!-- =========================================================
+       MISSION COMPLETE CELEBRATION MODAL
+       ========================================================= -->
+  <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="max-w-md w-full hud-panel hud-chamfer p-6 sm:p-8 text-center border-amber-400">
+      <div class="text-4xl sm:text-5xl mb-3">🏆⭐🎖️</div>
+      <div class="inline-block px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-orbitron font-extrabold text-xs tracking-widest mb-2">
+        ALL MISSIONS ACCOMPLISHED
+      </div>
+      <h2 class="font-orbitron text-2xl sm:text-3xl font-black text-white mb-2">
+        SUPER AGENT CERTIFIED!
+      </h2>
+      <p class="text-cyan-100 text-base font-semibold mb-6">
+        Awesome job! You mastered finding locations on a 4×4 coordinate grid using <strong class="text-amber-300">MATA HQ</strong> as your reference point, directions (<strong class="text-cyan-300">Right, Left, Up, Down</strong>), and <strong class="text-cyan-300">Letter-Number</strong> coordinates!
+      </p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button id="btn-play-again" class="btn-mata px-6 py-3 rounded-xl bg-cyan-400 text-slate-950 font-orbitron font-extrabold text-sm tracking-wider">
+          PLAY MISSIONS AGAIN
+        </button>
+        <button id="btn-victory-explore" class="btn-mata px-6 py-3 rounded-xl bg-slate-800 border border-amber-400 text-amber-300 font-orbitron font-extrabold text-sm tracking-wider">
+          FREE EXPLORE GRID
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/**
+ * ============================================================================
+ * MATA HOLOGRAPHIC GRID: FIND THE OBJECT
+ * Year 3 Mathematics (Topic 8: Coordinates) - Interactive AR Web Application
+ * ============================================================================
+ */
+
+// 1. GRID DATA & 3D OBJECT DEFINITIONS (Year 3 Convention: Columns A-D, Rows 1-4)
+const COLUMNS = ['A', 'B', 'C', 'D'];
+const ROWS = [4, 3, 2, 1]; // Rendered top-to-bottom so Row 1 is bottom-left (A1)
+
+const GRID_OBJECTS = {
+  'A1': {
+    id: 'mata-hq',
+    name: 'MATA HQ (Reference Point)',
+    shortLabel: 'MATA HQ',
+    isReference: true,
+    color: '#ffc107',
+    description: 'This is our fixed Reference Point at A1! Always start counting steps from MATA HQ.',
+    svg: `
+      <svg width="46" height="46" viewBox="0 0 64 64">
+        <ellipse cx="32" cy="48" rx="24" ry="8" fill="#0284c7" stroke="#00f0ff" stroke-width="2"/>
+        <path d="M12 46 C12 24, 52 24, 52 46 Z" fill="#e2e8f0" stroke="#00f0ff" stroke-width="2.5"/>
+        <path d="M20 46 C20 30, 44 30, 44 46 Z" fill="#0284c7"/>
+        <circle cx="32" cy="24" r="5" fill="#ffc107" stroke="#ffffff" stroke-width="1.5"/>
+        <line x1="32" y1="12" x2="32" y2="19" stroke="#ffc107" stroke-width="3" stroke-linecap="round"/>
+      </svg>`
+  },
+  'B3': {
+    id: 'patrol-robot',
+    name: 'Patrol Robot',
+    shortLabel: 'ROBOT',
+    isReference: false,
+    color: '#00f0ff',
+    description: 'Located at B3: From MATA HQ (A1), move 1 step RIGHT to B, then 2 steps UP to 3.',
+    svg: `
+      <svg width="44" height="44" viewBox="0 0 64 64">
+        <line x1="32" y1="6" x2="32" y2="15" stroke="#ffc107" stroke-width="3"/>
+        <circle cx="32" cy="6" r="3.5" fill="#ff3b5c"/>
+        <rect x="18" y="15" width="28" height="20" rx="6" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
+        <rect x="22" y="20" width="20" height="9" rx="3" fill="#041527"/>
+        <circle cx="27" cy="24.5" r="2.5" fill="#00f0ff"/>
+        <circle cx="37" cy="24.5" r="2.5" fill="#00f0ff"/>
+        <rect x="20" y="37" width="24" height="16" rx="4" fill="#0284c7" stroke="#00f0ff" stroke-width="2"/>
+        <rect x="11" y="38" width="6" height="12" rx="3" fill="#ffc107"/>
+        <rect x="47" y="38" width="6" height="12" rx="3" fill="#ffc107"/>
+      </svg>`
+  },
+  'D4': {
+    id: 'recon-drone',
+    name: 'Recon Drone',
+    shortLabel: 'DRONE',
+    isReference: false,
+    color: '#a855f7',
+    description: 'Located at D4: From MATA HQ (A1), move 3 steps RIGHT to D, then 3 steps UP to 4.',
+    svg: `
+      <svg width="46" height="46" viewBox="0 0 64 64">
+        <ellipse cx="14" cy="22" rx="11" ry="3.5" fill="#00f0ff" opacity="0.85"/>
+        <ellipse cx="50" cy="22" rx="11" ry="3.5" fill="#00f0ff" opacity="0.85"/>
+        <line x1="14" y1="22" x2="26" y2="32" stroke="#cbd5e1" stroke-width="3.5"/>
+        <line x1="50" y1="22" x2="38" y2="32" stroke="#cbd5e1" stroke-width="3.5"/>
+        <ellipse cx="32" cy="34" rx="13" ry="9" fill="#1e293b" stroke="#00f0ff" stroke-width="2.5"/>
+        <circle cx="32" cy="34" r="5" fill="#ff3b5c" stroke="#ffc107" stroke-width="2"/>
+        <path d="M22 42 L18 50 M42 42 L46 50" stroke="#ffc107" stroke-width="3" stroke-linecap="round"/>
+      </svg>`
+  },
+  'A4': {
+    id: 'cyberaya-tree',
+    name: 'Cyberaya Tree',
+    shortLabel: 'TREE',
+    isReference: false,
+    color: '#10b981',
+    description: 'Located at A4: Stay in Column A, and move 3 steps UP from MATA HQ (A1) to row 4.',
+    svg: `
+      <svg width="44" height="44" viewBox="0 0 64 64">
+        <rect x="27" y="38" width="10" height="16" rx="2" fill="#92400e" stroke="#fbbf24" stroke-width="1.5"/>
+        <circle cx="32" cy="22" r="14" fill="#10b981" stroke="#6ee7b7" stroke-width="2"/>
+        <circle cx="22" cy="30" r="11" fill="#059669" stroke="#6ee7b7" stroke-width="2"/>
+        <circle cx="42" cy="30" r="11" fill="#059669" stroke="#6ee7b7" stroke-width="2"/>
+        <circle cx="28" cy="20" r="2.5" fill="#fef08a"/>
+        <circle cx="38" cy="27" r="2.5" fill="#fef08a"/>
+      </svg>`
+  },
+  'C1': {
+    id: 'control-tower',
+    name: 'Control Tower',
+    shortLabel: 'TOWER',
+    isReference: false,
+    color: '#38bdf8',
+    description: 'Located at C1: From MATA HQ (A1), move 2 steps RIGHT along Row 1 to Column C.',
+    svg: `
+      <svg width="44" height="44" viewBox="0 0 64 64">
+        <line x1="32" y1="4" x2="32" y2="14" stroke="#ff3b5c" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="32" cy="4" r="3" fill="#ffc107"/>
+        <rect x="20" y="14" width="24" height="10" rx="3" fill="#00f0ff" stroke="#ffffff" stroke-width="1.8"/>
+        <polygon points="25,24 39,24 42,54 22,54" fill="#334155" stroke="#00f0ff" stroke-width="2"/>
+        <line x1="27" y1="32" x2="37" y2="32" stroke="#ffc107" stroke-width="2.5"/>
+        <line x1="26" y1="40" x2="38" y2="40" stroke="#ffc107" stroke-width="2.5"/>
+      </svg>`
+  },
+  'D2': {
+    id: 'comm-device',
+    name: 'Communication Device',
+    shortLabel: 'DEVICE',
+    isReference: false,
+    color: '#ff3b5c',
+    description: 'Located at D2: From MATA HQ (A1), move 3 steps RIGHT to D, then 1 step UP to row 2!',
+    svg: `
+      <svg width="44" height="44" viewBox="0 0 64 64">
+        <rect x="20" y="14" width="24" height="38" rx="6" fill="#0f172a" stroke="#ffc107" stroke-width="2.5"/>
+        <rect x="24" y="19" width="16" height="18" rx="2" fill="#00f0ff"/>
+        <circle cx="32" cy="28" r="4" fill="#041527"/>
+        <circle cx="27" cy="43" r="2.2" fill="#ff3b5c"/>
+        <circle cx="32" cy="43" r="2.2" fill="#ffc107"/>
+        <circle cx="37" cy="43" r="2.2" fill="#10b981"/>
+        <path d="M25 9 Q32 4 39 9" stroke="#00f0ff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>`
+  }
+};
+
+// 2. CURRICULUM MISSIONS (Guided by IRIS, strictly Year 3 level: no Cartesian x/y terms)
+const MISSIONS = [
+  {
+    step: 1,
+    targetCoord: 'C1',
+    pathDemo: ['A1', 'B1', 'C1'],
+    prompt: 'MISSION 1 (TRAINING): Always start at MATA HQ (A1). Move 2 steps RIGHT along row 1 to find the Control Tower at C1! Tap C1.',
+    hint: 'Start at MATA HQ (A1) at the bottom-left. Move 2 squares RIGHT to Column C, Row 1!'
+  },
+  {
+    step: 2,
+    targetCoord: 'B3',
+    pathDemo: ['A1', 'B1', 'B2', 'B3'],
+    prompt: 'MISSION 2: Locate the Patrol Robot at B3! Remember: Read Column B first, then Row 3. Tap B3!',
+    hint: 'Find letter B at the bottom, then go UP to number 3 on the left!'
+  },
+  {
+    step: 3,
+    targetCoord: 'D2',
+    pathDemo: ['A1', 'B1', 'C1', 'D1', 'D2'],
+    prompt: 'MISSION 3: Start at MATA HQ (A1). Move 3 steps RIGHT and 1 step UP to recover the Lost Communication Device!',
+    hint: 'From A1, count 3 squares RIGHT to Column D, then 1 square UP to Row 2 (D2)!'
+  },
+  {
+    step: 4,
+    targetCoord: 'D4',
+    pathDemo: ['A1', 'B1', 'C1', 'D1', 'D2', 'D3', 'D4'],
+    prompt: 'MISSION 4: High-altitude alert! Find the Recon Drone hovering at D4!',
+    hint: 'Look at the top-right corner of the grid: Column D, Row 4!'
+  },
+  {
+    step: 5,
+    targetCoord: 'A4',
+    pathDemo: ['A1', 'A2', 'A3', 'A4'],
+    prompt: 'FINAL MISSION 5: From MATA HQ (A1), move straight UP 3 steps to locate the Cyberaya Tree!',
+    hint: 'Stay in Column A on the far left and move UP to Row 4 (A4)!'
+  }
+];
+
+// 3. APPLICATION STATE
+let currentMode = 'mission'; // 'mission' or 'explore'
+let currentMissionIdx = 0;
+let completedMissions = new Set();
+let selectedCoord = 'A1';
+let currentStream = null;
+let facingMode = 'user'; // Default to front-facing camera so pupils can easily wave hands in front of screen
+let soundEnabled = true;
+let audioCtx = null;
+
+// Real-Time Hand Tracking State
+let handTrackingEnabled = true;
+let mpHands = null;
+let handLoopRaf = null;
+let isSendingFrame = false;
+let smoothedHandX = null;
+let smoothedHandY = null;
+let hoveredElement = null;
+let hoverStartTime = 0;
+let hoverTriggered = false;
+let isPinching = false;
+const DWELL_DURATION_MS = 1200; // 1.2 seconds steady hold to lock-on (ideal for 9-year-old pupils)
+const DWELL_CIRCUMFERENCE = 144.5;
+
+// 3D Tilt Interaction State
+let rotX = 18;
+let rotY = 0;
+let isDraggingGrid = false;
+let startDragX = 0;
+let startDragY = 0;
+
+// 4. WEB AUDIO API SYNTHESIZER (Sci-Fi Sound Effects without external URLs)
+function playSound(type) {
+  if (!soundEnabled) return;
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === 'tap') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(620, now);
+      osc.frequency.exponentialRampToValueAtTime(980, now + 0.09);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    } else if (type === 'success') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+      osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+      osc.frequency.setValueAtTime(1046.50, now + 0.3); // C6
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.start(now);
+      osc.stop(now + 0.55);
+    } else if (type === 'error') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.linearRampToValueAtTime(150, now + 0.22);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+      osc.start(now);
+      osc.stop(now + 0.24);
+    } else if (type === 'lock') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    }
+  } catch (e) {
+    // Audio fallback silently ignored if blocked
+  }
+}
+
+// 5. INITIALIZE 4x4 HOLOGRAPHIC GRID
+function buildGrid() {
+  const gridEl = document.getElementById('coordinate-grid');
+  gridEl.innerHTML = '';
+
+  ROWS.forEach(row => {
+    COLUMNS.forEach(col => {
+      const coord = `${col}${row}`;
+      const obj = GRID_OBJECTS[coord];
+
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.dataset.coord = coord;
+      cell.className = 'grid-cell h-14 sm:h-16 md:h-20 rounded-xl flex flex-col items-center justify-center relative focus:outline-none';
+      if (coord === selectedCoord) cell.classList.add('selected');
+
+      // Subtle coordinate watermark in corner
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'absolute top-1 left-1.5 font-orbitron text-[10px] sm:text-xs font-bold text-cyan-300/60';
+      labelSpan.textContent = coord;
+      cell.appendChild(labelSpan);
+
+      // Render Anchored 3D Object if present in this cell
+      if (obj) {
+        const baseRing = document.createElement('div');
+        baseRing.className = `holo-anchor-base ${obj.isReference ? 'hq-base' : ''}`;
+        cell.appendChild(baseRing);
+
+        const objWrap = document.createElement('div');
+        objWrap.className = 'anchored-3d-object flex flex-col items-center';
+        objWrap.innerHTML = `
+          ${obj.svg}
+          <span class="mt-[-2px] px-1.5 py-0.2 rounded text-[9px] sm:text-[10px] font-orbitron font-extrabold tracking-tight ${obj.isReference ? 'bg-amber-400 text-slate-950' : 'bg-slate-950/90 text-cyan-200 border border-cyan-400/50'}">
+            ${obj.shortLabel}
+          </span>
+        `;
+        cell.appendChild(objWrap);
+      }
+
+      cell.addEventListener('click', () => handleCellSelect(coord));
+      gridEl.appendChild(cell);
+    });
+  });
+}
+
+// 6. COMPUTE STEP-BY-STEP DIRECTIONAL PATH FROM MATA HQ (A1)
+function getDirectionsFromHQ(coord) {
+  if (coord === 'A1') {
+    return 'Starting Reference Point at Column A, Row 1. Tap any object or grid square to trace its path!';
+  }
+  const colIndex = COLUMNS.indexOf(coord[0]); // A=0, B=1, C=2, D=3
+  const rowNum = parseInt(coord[1], 10); // 1..4
+  const rightSteps = colIndex; // since A is 0
+  const upSteps = rowNum - 1; // since 1 is base
+
+  const parts = [];
+  if (rightSteps > 0) {
+    parts.push(`move ${rightSteps} ${rightSteps === 1 ? 'step' : 'steps'} RIGHT to Column ${coord[0]}`);
+  } else {
+    parts.push(`stay in Column A`);
+  }
+  if (upSteps > 0) {
+    parts.push(`move ${upSteps} ${upSteps === 1 ? 'step' : 'steps'} UP to Row ${rowNum}`);
+  } else {
+    parts.push(`stay on Row 1`);
+  }
+
+  return `From MATA HQ (A1): ${parts.join(', then ')}.`;
+}
+
+// 7. HANDLE GRID CELL / OBJECT INTERACTION
+function handleCellSelect(coord) {
+  selectedCoord = coord;
+  clearPathHighlights();
+
+  // Update visual cell selection
+  document.querySelectorAll('.grid-cell').forEach(el => {
+    el.classList.toggle('selected', el.dataset.coord === coord);
+  });
+
+  // Update Bottom Intel Card
+  const obj = GRID_OBJECTS[coord];
+  const badgeEl = document.getElementById('selected-coord-badge');
+  const nameEl = document.getElementById('intel-object-name');
+  const descEl = document.getElementById('intel-path-desc');
+
+  badgeEl.textContent = coord;
+  if (obj) {
+    nameEl.textContent = obj.name;
+    nameEl.className = `font-orbitron font-extrabold text-base sm:text-lg truncate ${obj.isReference ? 'text-amber-300' : 'text-cyan-300'}`;
+    descEl.textContent = obj.description;
+  } else {
+    nameEl.textContent = `Empty Grid Sector (${coord})`;
+    nameEl.className = 'font-orbitron font-extrabold text-base sm:text-lg text-slate-300 truncate';
+    descEl.textContent = getDirectionsFromHQ(coord);
+  }
+
+  // Handle Mode-Specific Logic
+  if (currentMode === 'explore') {
+    playSound('tap');
+    document.getElementById('iris-dialogue').textContent = obj
+      ? `Scanned ${obj.name} at grid location ${coord}! ${getDirectionsFromHQ(coord)}`
+      : `Grid square ${coord} selected (Column ${coord[0]}, Row ${coord[1]}). ${getDirectionsFromHQ(coord)}`;
+  } else {
+    // Mission Mode Validation
+    const mission = MISSIONS[currentMissionIdx];
+    const nextBtn = document.getElementById('btn-next-mission');
+
+    if (coord === mission.targetCoord) {
+      playSound('success');
+      completedMissions.add(currentMissionIdx);
+      renderMissionStars();
+      highlightPath(mission.pathDemo);
+
+      const targetObj = GRID_OBJECTS[coord];
+      document.getElementById('iris-dialogue').innerHTML =
+        `<span class="text-emerald-300">TARGET FOUND AT ${coord}!</span> Great job finding the <strong class="text-amber-300">${targetObj.name}</strong>!`;
+
+      if (currentMissionIdx < MISSIONS.length - 1) {
+        nextBtn.textContent = 'NEXT MISSION ▶';
+        nextBtn.classList.remove('hidden');
+      } else {
+        nextBtn.textContent = 'COMPLETE MISSION 🏆';
+        nextBtn.classList.remove('hidden');
+      }
+    } else {
+      playSound('error');
+      const cellEl = document.querySelector(`.grid-cell[data-coord="${coord}"]`);
+      if (cellEl) {
+        cellEl.classList.remove('wrong-shake');
+        void cellEl.offsetWidth; // trigger reflow
+        cellEl.classList.add('wrong-shake');
+      }
+      document.getElementById('iris-dialogue').innerHTML =
+        `<span class="text-rose-400">That's ${coord}!</span> ${mission.hint}`;
+    }
+  }
+}
+
+// 8. VISUAL PATH DEMONSTRATION HELPER
+function clearPathHighlights() {
+  document.querySelectorAll('.grid-cell').forEach(el => {
+    el.classList.remove('path-highlight');
+  });
+}
+
+function highlightPath(coordsList) {
+  clearPathHighlights();
+  coordsList.forEach((c, idx) => {
+    setTimeout(() => {
+      const el = document.querySelector(`.grid-cell[data-coord="${c}"]`);
+      if (el) el.classList.add('path-highlight');
+    }, idx * 140);
+  });
+}
+
+// 9. MISSION & EXPLORE MODE CONTROLLERS
+function renderMissionStars() {
+  const starsEl = document.getElementById('mission-stars');
+  starsEl.innerHTML = '';
+  MISSIONS.forEach((_, idx) => {
+    const star = document.createElement('span');
+    star.textContent = completedMissions.has(idx) ? '★' : '☆';
+    star.className = completedMissions.has(idx) ? 'text-amber-400 drop-shadow-[0_0_6px_#ffc107]' : 'text-slate-500';
+    starsEl.appendChild(star);
+  });
+}
+
+function loadMission(idx) {
+  currentMissionIdx = idx;
+  const mission = MISSIONS[idx];
+  clearPathHighlights();
+  document.getElementById('btn-next-mission').classList.add('hidden');
+  document.getElementById('iris-header-label').textContent = `IRIS MISSION ${mission.step} OF ${MISSIONS.length}`;
+  document.getElementById('iris-dialogue').textContent = mission.prompt;
+  renderMissionStars();
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  playSound('tap');
+  clearPathHighlights();
+
+  const tabMission = document.getElementById('tab-mission-mode');
+  const tabExplore = document.getElementById('tab-explore-mode');
+  const demoBtn = document.getElementById('btn-iris-demo');
+  const nextBtn = document.getElementById('btn-next-mission');
+
+  if (mode === 'mission') {
+    tabMission.className = 'btn-mata px-3 sm:px-4 py-1.5 rounded-lg font-orbitron font-extrabold text-xs sm:text-sm bg-amber-400 text-slate-950 transition';
+    tabExplore.className = 'btn-mata px-3 sm:px-4 py-1.5 rounded-lg font-orbitron font-extrabold text-xs sm:text-sm text-cyan-200 hover:text-white transition';
+    demoBtn.classList.remove('hidden');
+    loadMission(currentMissionIdx);
+  } else {
+    tabExplore.className = 'btn-mata px-3 sm:px-4 py-1.5 rounded-lg font-orbitron font-extrabold text-xs sm:text-sm bg-cyan-400 text-slate-950 transition';
+    tabMission.className = 'btn-mata px-3 sm:px-4 py-1.5 rounded-lg font-orbitron font-extrabold text-xs sm:text-sm text-cyan-200 hover:text-white transition';
+    demoBtn.classList.add('hidden');
+    nextBtn.classList.add('hidden');
+    document.getElementById('iris-header-label').textContent = 'IRIS FREE EXPLORATION';
+    document.getElementById('iris-dialogue').textContent =
+      'Tap any 3D object on the holographic grid to see its Letter-Number location and path from MATA HQ (A1)!';
+  }
+}
+
+// 10. DEVICE CAMERA & AR PERMISSION HANDLING
+async function startCameraFeed() {
+  const videoEl = document.getElementById('camera-feed');
+  const simBackdrop = document.getElementById('simulated-backdrop');
+  const fallbackBanner = document.getElementById('camera-fallback-banner');
+  const statusText = document.getElementById('camera-status-text');
+
+  stopCameraTracks();
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    activateSimulatedFallback('Camera is not supported in this browser. Running Simulated MATA HQ Arena!');
+    return;
+  }
+
+  try {
+    const constraints = {
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+
+    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+    videoEl.srcObject = currentStream;
+    await videoEl.play();
+
+    // Mirror video only for front camera so pupil's hand moves naturally like a mirror
+    if (facingMode === 'user') {
+      videoEl.classList.add('mirror-feed');
+    } else {
+      videoEl.classList.remove('mirror-feed');
+    }
+
+    videoEl.classList.remove('hidden');
+    simBackdrop.classList.add('hidden');
+    fallbackBanner.classList.add('hidden');
+    statusText.textContent = facingMode === 'environment' ? 'AR REAR CAM' : 'AR FRONT CAM';
+
+    // Start real-time MediaPipe Hand Tracking loop on the live local camera
+    startHandTrackingLoop();
+  } catch (err) {
+    activateSimulatedFallback('Camera access denied or unavailable. Switched to Simulated MATA HQ Arena with Virtual Hand Scanner!');
+  }
+}
+
+function activateSimulatedFallback(message) {
+  const videoEl = document.getElementById('camera-feed');
+  const simBackdrop = document.getElementById('simulated-backdrop');
+  const fallbackBanner = document.getElementById('camera-fallback-banner');
+  const fallbackMsg = document.getElementById('camera-fallback-msg');
+  const statusText = document.getElementById('camera-status-text');
+
+  videoEl.classList.add('hidden');
+  simBackdrop.classList.remove('hidden');
+  fallbackMsg.textContent = message;
+  fallbackBanner.classList.remove('hidden');
+  statusText.textContent = 'SIMULATED HQ';
+
+  updateHandSensorBadge('SIMULATED HAND MODE', 'bg-cyan-400');
+}
+
+function stopCameraTracks() {
+  if (handLoopRaf) {
+    cancelAnimationFrame(handLoopRaf);
+    handLoopRaf = null;
+  }
+  clearHandOverlay();
+  if (currentStream) {
+    currentStream.getTracks().forEach(track => track.stop());
+    currentStream = null;
+  }
+  const videoEl = document.getElementById('camera-feed');
+  videoEl.srcObject = null;
+}
+
+// ============================================================================
+// 10B. REAL-TIME HAND TRACKING & GESTURE ENGINE (MediaPipe Hands + Virtual Fallback)
+// ============================================================================
+function updateHandSensorBadge(label, dotColorClass) {
+  const textEl = document.getElementById('hand-sensor-text');
+  const dotEl = document.getElementById('hand-sensor-dot');
+  if (textEl) textEl.textContent = label;
+  if (dotEl) {
+    dotEl.className = `w-2 h-2 rounded-full ${dotColorClass}`;
+  }
+}
+
+function initMediaPipeHands() {
+  if (mpHands || typeof Hands === 'undefined') return;
+
+  mpHands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  mpHands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.65,
+    minTrackingConfidence: 0.6
+  });
+
+  mpHands.onResults(onHandTrackingResults);
+}
+
+function startHandTrackingLoop() {
+  if (!handTrackingEnabled) {
+    updateHandSensorBadge('HAND SENSOR: OFF', 'bg-slate-500');
+    clearHandOverlay();
+    return;
+  }
+
+  initMediaPipeHands();
+  if (!mpHands) {
+    updateHandSensorBadge('SIMULATED HAND MODE', 'bg-cyan-400');
+    return;
+  }
+
+  updateHandSensorBadge('HAND SENSOR: SCANNING', 'bg-amber-400 animate-ping');
+  const videoEl = document.getElementById('camera-feed');
+
+  const processFrame = async () => {
+    if (!currentStream || !handTrackingEnabled) return;
+
+    if (videoEl.readyState >= 2 && !isSendingFrame) {
+      isSendingFrame = true;
+      try {
+        await mpHands.send({ image: videoEl });
+      } catch (e) {
+        // Ignore transient frame errors
+      }
+      isSendingFrame = false;
+    }
+    handLoopRaf = requestAnimationFrame(processFrame);
+  };
+
+  handLoopRaf = requestAnimationFrame(processFrame);
+}
+
+function clearHandOverlay() {
+  const canvas = document.getElementById('hand-skeleton-canvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  const reticle = document.getElementById('iris-hand-reticle');
+  if (reticle) reticle.classList.add('hidden');
+  resetDwellState();
+}
+
+function resetDwellState() {
+  if (hoveredElement) {
+    hoveredElement.classList.remove('hand-hover');
+    hoveredElement = null;
+  }
+  hoverStartTime = 0;
+  hoverTriggered = false;
+  const progressCircle = document.getElementById('dwell-progress-circle');
+  if (progressCircle) {
+    progressCircle.style.strokeDashoffset = DWELL_CIRCUMFERENCE;
+  }
+}
+
+// Map normalized camera coordinates (accounting for object-cover cropping & front-camera mirroring)
+function mapLandmarkToScreen(lm, videoEl) {
+  const vw = videoEl.videoWidth || 1280;
+  const vh = videoEl.videoHeight || 720;
+  const sw = window.innerWidth;
+  const sh = window.innerHeight;
+
+  const videoAspect = vw / vh;
+  const screenAspect = sw / sh;
+
+  let drawWidth, drawHeight, offsetX, offsetY;
+  if (screenAspect > videoAspect) {
+    drawWidth = sw;
+    drawHeight = sw / videoAspect;
+    offsetX = 0;
+    offsetY = (sh - drawHeight) / 2;
+  } else {
+    drawHeight = sh;
+    drawWidth = sh * videoAspect;
+    offsetX = (sw - drawWidth) / 2;
+    offsetY = 0;
+  }
+
+  const normX = facingMode === 'user' ? (1 - lm.x) : lm.x;
+  const normY = lm.y;
+
+  return {
+    x: normX * drawWidth + offsetX,
+    y: normY * drawHeight + offsetY
+  };
+}
+
+// Draw futuristic M.A.T.A. holographic skeleton lines & joint nodes over detected hand
+function drawHolographicHandSkeleton(landmarks, videoEl, pinching) {
+  const canvas = document.getElementById('hand-skeleton-canvas');
+  if (!canvas) return;
+  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],       // Thumb
+    [0,5],[5,6],[6,7],[7,8],       // Index
+    [5,9],[9,10],[10,11],[11,12],  // Middle
+    [9,13],[13,14],[14,15],[15,16],// Ring
+    [13,17],[0,17],[17,18],[18,19],[19,20] // Pinky & Palm
+  ];
+
+  const pts = landmarks.map(lm => mapLandmarkToScreen(lm, videoEl));
+
+  // Glowing cyan skeletal lines
+  ctx.save();
+  ctx.strokeStyle = pinching ? '#ffc107' : 'rgba(0, 240, 255, 0.72)';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = pinching ? '#ffc107' : '#00f0ff';
+  ctx.shadowBlur = 12;
+
+  connections.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(pts[a].x, pts[a].y);
+    ctx.lineTo(pts[b].x, pts[b].y);
+    ctx.stroke();
+  });
+
+  // Joint nodes
+  pts.forEach((p, idx) => {
+    ctx.beginPath();
+    const isTip = (idx === 8 || idx === 4);
+    ctx.arc(p.x, p.y, isTip ? 6 : 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = isTip ? '#ffc107' : '#ffffff';
+    ctx.fill();
+  });
+  ctx.restore();
+
+  return pts;
+}
+
+function onHandTrackingResults(results) {
+  if (!handTrackingEnabled) return;
+  const videoEl = document.getElementById('camera-feed');
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    updateHandSensorBadge('HAND SENSOR: WAVE HAND', 'bg-amber-400 animate-ping');
+    clearHandOverlay();
+    smoothedHandX = null;
+    smoothedHandY = null;
+    return;
+  }
+
+  updateHandSensorBadge('HAND SENSOR: LOCKED', 'bg-emerald-400 animate-pulse');
+  const landmarks = results.multiHandLandmarks[0];
+
+  // Detect Pinch Gesture: Euclidean distance between Thumb Tip (#4) & Index Tip (#8)
+  const thumbTip = landmarks[4];
+  const indexTip = landmarks[8];
+  const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+  const currentlyPinching = pinchDist < 0.055;
+
+  const pts = drawHolographicHandSkeleton(landmarks, videoEl, currentlyPinching);
+  const rawX = pts[8].x;
+  const rawY = pts[8].y;
+
+  // Smooth fingertip jitter for steady 9-year-old aiming
+  if (smoothedHandX === null) {
+    smoothedHandX = rawX;
+    smoothedHandY = rawY;
+  } else {
+    smoothedHandX += (rawX - smoothedHandX) * 0.42;
+    smoothedHandY += (rawY - smoothedHandY) * 0.42;
+  }
+
+  processHandCursorAt(smoothedHandX, smoothedHandY, currentlyPinching);
+}
+
+// Unified Fingertip Cursor Interaction (Used by both Live Camera Hand & Simulated Virtual Hand)
+function processHandCursorAt(screenX, screenY, pinchActive) {
+  const reticle = document.getElementById('iris-hand-reticle');
+  const coordTag = document.getElementById('reticle-coord-tag');
+  const progressCircle = document.getElementById('dwell-progress-circle');
+  const coreDot = document.getElementById('reticle-core-dot');
+
+  reticle.classList.remove('hidden');
+  reticle.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+  coreDot.setAttribute('fill', pinchActive ? '#10b981' : '#ffc107');
+
+  // Hit-test grid cells or floating HUD buttons beneath fingertip
+  const elUnderFinger = document.elementFromPoint(screenX, screenY);
+  const targetCell = elUnderFinger ? elUnderFinger.closest('.grid-cell') : null;
+  const targetHudBtn = elUnderFinger ? elUnderFinger.closest('[data-hand-target="true"]') : null;
+  const activeTarget = targetCell || targetHudBtn;
+
+  if (targetCell) {
+    coordTag.textContent = targetCell.dataset.coord;
+  } else if (targetHudBtn) {
+    coordTag.textContent = 'ACTION';
+  } else {
+    coordTag.textContent = pinchActive ? 'PINCH' : 'SCAN';
+  }
+
+  if (activeTarget !== hoveredElement) {
+    resetDwellState();
+    if (activeTarget) {
+      hoveredElement = activeTarget;
+      hoveredElement.classList.add('hand-hover');
+      hoverStartTime = performance.now();
+      hoverTriggered = false;
+    }
+  }
+
+  // Trigger selection via EITHER (a) PINCH gesture OR (b) 1.2s STEADY DWELL HOLD
+  if (hoveredElement && !hoverTriggered) {
+    const elapsed = performance.now() - hoverStartTime;
+    const ratio = Math.min(1, elapsed / DWELL_DURATION_MS);
+    progressCircle.style.strokeDashoffset = DWELL_CIRCUMFERENCE * (1 - ratio);
+
+    const pinchJustPressed = pinchActive && !isPinching;
+    if (pinchJustPressed || ratio >= 1) {
+      hoverTriggered = true;
+      playSound('lock');
+      if (hoveredElement.dataset.coord) {
+        handleCellSelect(hoveredElement.dataset.coord);
+      } else {
+        hoveredElement.click();
+      }
+      // Visual flash on lock-on
+      progressCircle.style.strokeDashoffset = 0;
+    }
+  }
+
+  isPinching = pinchActive;
+}
+
+// Simulated Virtual Hand Scanner when camera is turned off/denied (pointer/mouse acts as virtual hand)
+function initVirtualHandFallback() {
+  const gameScreen = document.getElementById('game-screen');
+  gameScreen.addEventListener('pointermove', (e) => {
+    if (currentStream || !handTrackingEnabled) return;
+    if (document.getElementById('game-screen').classList.contains('hidden')) return;
+    processHandCursorAt(e.clientX, e.clientY, e.buttons === 1);
+  });
+}
+
+function enterGameScreen(useCamera) {
+  playSound('tap');
+  document.getElementById('welcome-screen').classList.add('hidden');
+  document.getElementById('game-screen').classList.remove('hidden');
+  buildGrid();
+  setMode('mission');
+
+  if (useCamera) {
+    startCameraFeed();
+  } else {
+    stopCameraTracks();
+    activateSimulatedFallback('Simulated MATA HQ Arena active! Move your pointer/finger to aim the Virtual Hand Scanner & hold 1.2s to select.');
+  }
+}
+
+function exitGameScreen() {
+  playSound('tap');
+  stopCameraTracks();
+  document.getElementById('game-screen').classList.add('hidden');
+  document.getElementById('victory-modal').classList.add('hidden');
+  document.getElementById('welcome-screen').classList.remove('hidden');
+}
+
+// 11. 3D PERSPECTIVE DRAG / TILT PARALLAX (Anchors Hologram Feel)
+function init3DTiltControls() {
+  const board = document.getElementById('holo-board');
+  const stage = document.querySelector('.ar-stage');
+
+  const updateTransform = () => {
+    board.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+  };
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.grid-cell')) return;
+    isDraggingGrid = true;
+    startDragX = e.clientX;
+    startDragY = e.clientY;
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDraggingGrid) return;
+    const dx = e.clientX - startDragX;
+    const dy = e.clientY - startDragY;
+    rotY = Math.max(-22, Math.min(22, rotY + dx * 0.15));
+    rotX = Math.max(4, Math.min(34, rotX - dy * 0.15));
+    startDragX = e.clientX;
+    startDragY = e.clientY;
+    updateTransform();
+  });
+
+  window.addEventListener('pointerup', () => {
+    isDraggingGrid = false;
+  });
+}
+
+// 12. EVENT LISTENERS
+document.getElementById('btn-start-ar').addEventListener('click', () => enterGameScreen(true));
+document.getElementById('btn-start-sim').addEventListener('click', () => enterGameScreen(false));
+document.getElementById('btn-exit-camera').addEventListener('click', exitGameScreen);
+document.getElementById('btn-retry-camera').addEventListener('click', () => {
+  playSound('tap');
+  startCameraFeed();
+});
+
+document.getElementById('btn-switch-camera').addEventListener('click', () => {
+  playSound('tap');
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  startCameraFeed();
+});
+
+document.getElementById('btn-toggle-hand').addEventListener('click', () => {
+  playSound('tap');
+  handTrackingEnabled = !handTrackingEnabled;
+  if (handTrackingEnabled) {
+    if (currentStream) {
+      startHandTrackingLoop();
+    } else {
+      updateHandSensorBadge('SIMULATED HAND MODE', 'bg-cyan-400');
+    }
+  } else {
+    if (handLoopRaf) cancelAnimationFrame(handLoopRaf);
+    clearHandOverlay();
+    updateHandSensorBadge('HAND SENSOR: OFF', 'bg-slate-500');
+  }
+});
+
+document.getElementById('btn-toggle-sound').addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  document.getElementById('icon-sound-on').classList.toggle('hidden', !soundEnabled);
+  document.getElementById('icon-sound-off').classList.toggle('hidden', soundEnabled);
+  if (soundEnabled) playSound('tap');
+});
+
+document.getElementById('tab-mission-mode').addEventListener('click', () => setMode('mission'));
+document.getElementById('tab-explore-mode').addEventListener('click', () => setMode('explore'));
+
+document.getElementById('btn-iris-demo').addEventListener('click', () => {
+  playSound('tap');
+  const mission = MISSIONS[currentMissionIdx];
+  highlightPath(mission.pathDemo);
+  document.getElementById('iris-dialogue').innerHTML =
+    `<span class="text-cyan-300">IRIS PATH GUIDE:</span> Follow the glowing blue squares from <strong class="text-amber-300">MATA HQ (A1)</strong> to <strong class="text-amber-300">${mission.targetCoord}</strong>!`;
+});
+
+document.getElementById('btn-next-mission').addEventListener('click', () => {
+  playSound('tap');
+  if (currentMissionIdx < MISSIONS.length - 1) {
+    loadMission(currentMissionIdx + 1);
+  } else {
+    playSound('success');
+    document.getElementById('victory-modal').classList.remove('hidden');
+  }
+});
+
+document.getElementById('btn-play-again').addEventListener('click', () => {
+  playSound('tap');
+  completedMissions.clear();
+  document.getElementById('victory-modal').classList.add('hidden');
+  loadMission(0);
+});
+
+document.getElementById('btn-victory-explore').addEventListener('click', () => {
+  playSound('tap');
+  document.getElementById('victory-modal').classList.add('hidden');
+  setMode('explore');
+});
+
+window.onload = function() {
+  init3DTiltControls();
+  initVirtualHandFallback();
+};
+</script>
+</body>
+</html>
